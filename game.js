@@ -429,6 +429,44 @@ var BS = (function () {
     return stats;
   }
 
+  // Stepwise full-turn runner for the v1.1 spectate mode. One call =
+  // one turn: every seat picks (chains inline), then hands rotate or
+  // the round ends. Same turn order as autoPlayGame, so a stepTurn
+  // loop reaches the same totals for the same game (proven, not
+  // claimed, in verify.js).
+  function stepTurn(g) {
+    if (g.phase === 'gameEnd') return { done: true, events: [], roundResult: null, swing: g.swing };
+    var events = [];
+    g.players.forEach(function (p, pi) {
+      if (p.hand.length === 0) return;
+      var again = true, guard = 0;
+      while (again && p.hand.length > 0 && guard++ < 12) {
+        var cardId = pickBot(g, pi, p.hand);
+        var card = null;
+        p.hand.forEach(function (c) { if (c.id === cardId) card = c; });
+        var r = pickOne(g, pi, cardId);
+        events.push({ pi: pi, name: p.name, card: card, timeout: r === 'timeout' });
+        again = (r === 'timeout');
+      }
+    });
+    var roundResult = null, done = false;
+    if (handsEmpty(g)) {
+      var out = endRound(g);
+      roundResult = out.result; done = out.done;
+    } else rotateHands(g);
+    return { done: done, events: events, roundResult: roundResult, swing: done ? g.swing : null };
+  }
+
+  // Tournament game codes: deterministic per-game deck codes derived
+  // from one 5-letter tournament code, so the same tournament code
+  // replays the same games (same decks, same seeded bot tie-breaks).
+  function tourneyGameCode(base, i) {
+    var clean = (base || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+    if (clean.length !== 5) return null;
+    var seed = (codeToSeed(clean) ^ ((i + 1) * 0x9E3779B9)) >>> 0;
+    return randomCode(mulberry32(seed));
+  }
+
   /* ---------------- 5. BOTS ---------------- */
   // Pure pick functions: (game, playerIndex, hand) -> cardId.
   // No DOM, no hidden state — the sims and the v1.1 spectate mode call
@@ -832,6 +870,138 @@ var BS = (function () {
     $('binderBody').innerHTML = html || '<p class="small">Nothing drafted yet this session.</p>';
   }
 
+  /* ---- spectate: bots play each other, live ---- */
+  // Drives the UI-free engine one turn at a time (stepTurn) on a
+  // timer. State changes first, rendering follows. Pause is always
+  // one tap away; autoplay never strands the viewer.
+  var SP = null; // { tourney, gameIndex, totalGames, g, timer, speed, playing, standings, lastPick }
+  var SPEC_GAMES = 5;
+  function specSpeedMs() { return SP.speed === 4 ? 250 : (SP.speed === 2 ? 500 : 1000); }
+  function startSpectate(tourneyCode) {
+    var code = (tourneyCode || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+    if (code.length !== 5) code = randomCode(mulberry32(Math.floor(Math.random() * 1e9)));
+    SP = { tourney: code, gameIndex: 0, totalGames: SPEC_GAMES, g: null,
+      timer: null, speed: 1, playing: false, lastPick: {},
+      standings: ['Marv the Collector', 'Dex the Gunner', 'Prudence the Ledger'].map(function (n) {
+        return { name: n, wins: 0, pts: 0 };
+      }) };
+    show('setup', false); show('packStage', false); show('game', false);
+    show('spectate', true);
+    $('specTourneyCode').textContent = 'Tournament ' + code;
+    specStartGame();
+    renderStandings();
+  }
+  function specStartGame() {
+    var code = tourneyGameCode(SP.tourney, SP.gameIndex);
+    SP.g = createGame({ code: code, botOnly: true, playerCount: 3 });
+    SP.lastPick = {};
+    $('specFeed').innerHTML = '';
+    $('specGameLabel').textContent = 'Game ' + (SP.gameIndex + 1) + ' of ' + SP.totalGames + ' · Deck ' + code;
+    $('specNext').disabled = true;
+    $('specNext').textContent = 'Next game';
+    $('specFinal').innerHTML = '';
+    specRender();
+  }
+  function specRender() {
+    var g = SP.g;
+    $('specRound').textContent = g.phase === 'gameEnd' ? 'FINAL' : ('ROUND ' + g.round + ' / ' + CONFIG.ROUNDS);
+    $('specScores').innerHTML = g.players.map(function (p) {
+      return '<span class="score-chip">' + esc(p.name) + ' <b>' + fmt(p.total) + '</b> · ' + p.rings + ' rings</span>';
+    }).join('');
+    $('specPanels').innerHTML = g.players.map(function (p, i) {
+      var lp = SP.lastPick[i] ? esc(SP.lastPick[i].type) + ' — ' + esc(SP.lastPick[i].name) : 'Waiting for the draft…';
+      return '<div class="opp"><div class="who">' + esc(p.name) + '</div><div class="last">' + lp +
+        '</div><div class="small">Rings ' + p.rings + ' · ' + fmt(p.total) + ' pts</div></div>';
+    }).join('');
+  }
+  function specFeedLine(html) {
+    var feed = $('specFeed');
+    var d = document.createElement('div');
+    d.className = 'spec-line';
+    d.innerHTML = html;
+    feed.appendChild(d);
+    while (feed.children.length > 40) feed.removeChild(feed.firstChild);
+    feed.scrollTop = feed.scrollHeight;
+  }
+  function specStep() {
+    var g = SP.g;
+    if (!g || g.phase === 'gameEnd') { specPause(); return; }
+    var roundBefore = g.round;
+    var out = stepTurn(g);
+    out.events.forEach(function (ev) {
+      SP.lastPick[ev.pi] = { type: ev.card.type, name: ev.card.face.name };
+      specFeedLine('<b>' + esc(ev.name) + '</b> drafted ' + esc(ev.card.type) + ' — ' + esc(ev.card.face.name) +
+        (ev.timeout ? ' <i>(Timeout — drafts again)</i>' : ''));
+    });
+    if (out.roundResult) {
+      var rows = out.roundResult.map(function (r) {
+        return esc(r.name) + ' ' + fmt(r.total);
+      }).join(' · ');
+      specFeedLine('<span class="spec-stamp">IN THE BOOKS — Round ' + roundBefore + ':</span> ' + rows);
+    }
+    if (out.done) specFinishGame();
+    specRender();
+  }
+  function specFinishGame() {
+    specPause();
+    var g = SP.g;
+    g.players.forEach(function (p) {
+      var st = null;
+      SP.standings.forEach(function (s) { if (s.name === p.name) st = s; });
+      if (st) { st.pts += p.total; if (g.champion.indexOf(p.name) >= 0) st.wins++; }
+    });
+    var champ = g.champion.join(' & ');
+    $('specFinal').innerHTML = '<h3>' + esc(champ.toUpperCase()) + ' TOOK GAME ' + (SP.gameIndex + 1) + '</h3>' +
+      '<p>' + g.players.map(function (p) { return esc(p.name) + ' ' + fmt(p.total); }).join(' · ') +
+      ' · Rings swing ' + g.swing.map(fmt).join(' / ') + '</p>';
+    renderStandings();
+    $('specNext').disabled = false;
+    if (SP.gameIndex + 1 >= SP.totalGames) $('specNext').textContent = 'See tournament final';
+    specRender();
+  }
+  function renderStandings() {
+    var rows = SP.standings.slice().sort(function (a, b) { return (b.wins - a.wins) || (b.pts - a.pts); }).map(function (s) {
+      return '<tr><td>' + esc(s.name) + '</td><td>' + s.wins + '</td><td>' + fmt(s.pts) + '</td></tr>';
+    }).join('');
+    $('specStandings').innerHTML = '<table><tr><th>Bot</th><th>Titles</th><th>Points</th></tr>' + rows + '</table>';
+  }
+  function specPlay() {
+    if (!SP || !SP.g || SP.g.phase === 'gameEnd') return;
+    specPause();
+    SP.playing = true;
+    $('specPlay').textContent = 'Pause';
+    SP.timer = setInterval(specStep, specSpeedMs());
+  }
+  function specPause() {
+    if (SP && SP.timer) { clearInterval(SP.timer); SP.timer = null; }
+    if (SP) SP.playing = false;
+    if ($('specPlay')) $('specPlay').textContent = 'Play';
+  }
+  function specFinishNow() {
+    if (!SP || !SP.g) return;
+    specPause();
+    while (SP.g.phase !== 'gameEnd') specStep();
+  }
+  function specNextGame() {
+    if (SP.gameIndex + 1 < SP.totalGames) {
+      SP.gameIndex++;
+      specStartGame();
+      return;
+    }
+    var top = SP.standings.slice().sort(function (a, b) { return (b.wins - a.wins) || (b.pts - a.pts); })[0];
+    $('specFinal').innerHTML = '<h3>TOURNAMENT FINAL — ' + esc(top.name.toUpperCase()) + ' TAKES IT</h3>' +
+      '<p>' + SP.standings.map(function (s) { return esc(s.name) + ': ' + s.wins + ' titles, ' + fmt(s.pts) + ' pts'; }).join(' · ') + '</p>' +
+      '<p class="small">Replay the whole tournament: code ' + SP.tourney + '.</p>';
+    $('specNext').disabled = true;
+  }
+  function tourneyShareText() {
+    var url = (typeof location !== 'undefined') ? location.href.split('?')[0] : '';
+    var top = SP.standings.slice().sort(function (a, b) { return (b.wins - a.wins) || (b.pts - a.pts); })[0];
+    var story = top ? (' ' + top.name + ' leads with ' + top.wins + ' titles.') : '';
+    return 'I watched ' + CONFIG.TITLE + ' bots battle it out!' + story +
+      ' Watch the same tournament: ' + url + '?mode=spectate&tourney=' + SP.tourney + ' — code ' + SP.tourney + '.';
+  }
+
   /* ---- share + champion PNG ---- */
   function challengeText() {
     var url = (typeof location !== 'undefined') ? location.href.split('?')[0] : '';
@@ -841,7 +1011,7 @@ var BS = (function () {
       score = ' I scored ' + fmt(me.total) + ' pts.';
     }
     return 'I played ' + CONFIG.TITLE + '! Deck ' + (S ? S.g.code : '') + '.' + score +
-      ' Beat my deck: ' + url + ' — enter code ' + (S ? S.g.code : '') + '.';
+      ' Beat my deck: ' + url + '?code=' + (S ? S.g.code : '') + ' — enter code ' + (S ? S.g.code : '') + '.';
   }
   function copyText(t, noteEl) {
     function done() { if (noteEl) noteEl.classList.remove('hidden'); }
@@ -901,8 +1071,40 @@ var BS = (function () {
       var mode = $('modeSelect').value;
       var code = $('seedInput').value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
       if (code && code.length !== 5) { $('seedInput').focus(); return; }
+      if (mode === 'spectate') { startSpectate(code); return; }
       startGame(mode, code);
     });
+    $('modeSelect').addEventListener('change', function () {
+      if ($('modeSelect').value === 'spectate') {
+        $('btnOpenPack').textContent = 'Watch the tournament';
+        $('seedNote').textContent = 'Tournament code? Type it in and you\'ll watch the exact same tournament.';
+      } else {
+        $('btnOpenPack').textContent = 'Tear open the wax pack';
+        $('seedNote').textContent = 'Have a friend\'s code? Type it in and you\'ll play their exact deck.';
+      }
+    });
+    $('specPlay').addEventListener('click', function () { if (SP.playing) specPause(); else specPlay(); });
+    $('specSpeed').addEventListener('change', function () {
+      if (SP) SP.speed = parseInt($('specSpeed').value, 10) || 1;
+      if (SP && SP.playing) specPlay();
+    });
+    $('specFinish').addEventListener('click', specFinishNow);
+    $('specNext').addEventListener('click', specNextGame);
+    $('specCopy').addEventListener('click', function () { copyText(tourneyShareText(), $('specCopyNote')); });
+    $('specBack').addEventListener('click', function () {
+      specPause();
+      show('spectate', false); show('setup', true);
+    });
+    // Deep links: ?code=XXXXX pre-fills the deck; ?mode=spectate&tourney=XXXXX starts that tournament.
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      var qcode = (qs.get('code') || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+      if (qcode.length === 5) $('seedInput').value = qcode;
+      if (qs.get('mode') === 'spectate') {
+        var tq = (qs.get('tourney') || qcode || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+        if (tq.length === 5) startSpectate(tq);
+      }
+    } catch (e) { /* deep links are a convenience, never a blocker */ }
     $('btnRandomCode').addEventListener('click', function () {
       $('seedInput').value = randomCode(mulberry32(Math.floor(Math.random() * 1e9)));
     });
@@ -944,6 +1146,7 @@ var BS = (function () {
     handsEmpty: handsEmpty, scorePicks: scorePicks, scoreRound: scoreRound,
     ringsSwing: ringsSwing, endRound: endRound, reportCard: reportCard,
     autoPlayGame: autoPlayGame, pickBot: pickBot, codeToSeed: codeToSeed,
+    stepTurn: stepTurn, tourneyGameCode: tourneyGameCode,
     randomCode: randomCode, mulberry32: mulberry32, FACES: FACES,
     TYPE_COLOR: TYPE_COLOR, TYPE_EMBLEM: TYPE_EMBLEM, SHOT_POINTS: SHOT_POINTS,
     boot: boot

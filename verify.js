@@ -119,5 +119,47 @@ const sstats = BS.autoPlayGame(solo);
 console.log('SOLO-SHAPE GAME code SOLOA totals:', solo.players.map(p => p.total).join(', '),
   '| champion:', solo.champion.join(' & '), '| swing:', solo.swing.join(', '));
 
+/* 6. v1.1 spectate: stepTurn completes games, equals autoPlayGame, tournaments are deterministic. */
+function stepGame(code, pc) {
+  const g = BS.createGame({ code, botOnly: true, playerCount: pc });
+  let steps = 0;
+  while (g.phase !== 'gameEnd' && steps < 1000) { BS.stepTurn(g); steps++; }
+  return g;
+}
+for (const pc of [3, 4]) {
+  const g = stepGame('STEPA', pc);
+  ok(g.phase === 'gameEnd', `stepTurn ${pc}-bot game completes`);
+  ok(g.champion && g.champion.length > 0, `stepTurn ${pc}-bot game has a champion`);
+  g.players.forEach((p, i) => {
+    const sum = p.roundScores.reduce((a, b) => a + b, 0) + g.swing[i];
+    if (Math.abs(sum - p.total) > 1e-9) ok(false, `stepTurn ${pc}-bot totals recompute (player ${i})`);
+  });
+}
+// Equivalence: same code + seats -> stepTurn loop totals == autoPlayGame totals.
+for (const [code, pc] of [['EQAAA', 3], ['EQBBB', 4], ['EQCCC', 5]]) {
+  const a = BS.createGame({ code, botOnly: true, playerCount: pc });
+  BS.autoPlayGame(a);
+  const b = stepGame(code, pc);
+  ok(JSON.stringify(a.players.map(p => p.total)) === JSON.stringify(b.players.map(p => p.total)),
+    `stepTurn == autoPlayGame totals for ${code}/${pc} bots`);
+  ok(JSON.stringify(a.champion) === JSON.stringify(b.champion), `stepTurn == autoPlayGame champion for ${code}`);
+}
+// Tournament codes: deterministic, valid, distinct per index.
+ok(BS.tourneyGameCode('ABCDE', 0) === BS.tourneyGameCode('ABCDE', 0), 'tourney code deterministic');
+ok(/^[A-Z]{5}$/.test(BS.tourneyGameCode('ABCDE', 2)), 'tourney game code is 5 letters');
+ok(BS.tourneyGameCode('ABCDE', 0) !== BS.tourneyGameCode('ABCDE', 1), 'tourney game codes differ per index');
+ok(BS.tourneyGameCode('abc', 0) === null, 'tourney code rejects short base');
+// Tournament determinism: same tourney code -> same champions across a 5-game series, run twice.
+function tourneyRun(base) {
+  const out = [];
+  for (let i = 0; i < 5; i++) {
+    const g = stepGame(BS.tourneyGameCode(base, i), 3);
+    out.push({ champ: g.champion.slice().sort().join('&'), totals: g.players.map(p => p.total) });
+  }
+  return out;
+}
+ok(JSON.stringify(tourneyRun('TRNYA')) === JSON.stringify(tourneyRun('TRNYA')), 'same tourney code -> same tournament');
+ok(JSON.stringify(tourneyRun('TRNYA')) !== JSON.stringify(tourneyRun('TRNYB')), 'different tourney code -> different tournament');
+
 console.log(failures === 0 ? 'ALL CHECKS PASSED' : failures + ' CHECKS FAILED');
 process.exit(failures === 0 ? 0 : 1);

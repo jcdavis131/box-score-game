@@ -90,6 +90,37 @@ is listed under **Interpretations** — flagged, never silently reinterpreted.
 - **Report card + seed code** make any reported game reproducible:
   the fix loop (user plays, reports, builder fixes fast) runs on these.
 
+## v1.1 — spectate + viral polish (shipped under MANDALA.md)
+
+- **Spectate mode.** Setup mode "Spectate — Marv vs Dex vs Prudence"
+  starts a 5-game bot tournament (3 bots, fixed series length —
+  panel default, Cameron may change it). Each game is driven one turn
+  at a time by the new UI-free engine function `stepTurn(g)` on a
+  timer, with Play/Pause, 1×/2×/4× speed, Finish now, Next game, and
+  Back to setup. Scores, rings, last picks, and a capped event feed
+  (40 lines) stay visible every turn; round stamps and per-game
+  finals mirror the human game. Standings track titles (shared titles
+  count for each champion) + total points, sorted titles then points.
+- **Tournament codes.** One 5-letter tournament code derives each
+  game's deck code deterministically (`tourneyGameCode(base, i)`):
+  same tournament code = same games (same decks, same seeded bot
+  tie-breaks). Tournament share text names the storyline (leader +
+  titles) and carries a deep link.
+- **Deep links.** `?code=XXXXX` pre-fills the deck code on load;
+  `?mode=spectate&tourney=XXXXX` starts that tournament. Game
+  challenge text now carries a playable `?code=` link.
+- **Viral polish.** Link-preview meta added (twitter:image,
+  theme-color). Instant play, no login unchanged. No new heavy
+  assets, no framework, no photos, no logos. CONFIG.TITLE still the
+  single rebrand point.
+- **Flagged seam deviation (not silent).** The v1 SPEC said spectate
+  "needs no engine changes" and could drive `autoPlayGame` on a
+  timer. That was wrong: `autoPlayGame` runs to completion and
+  cannot step. v1.1 adds the small UI-free `stepTurn(g)` runner
+  instead; verify.js proves a stepTurn loop reaches the exact same
+  totals and champions as `autoPlayGame` for the same code and
+  seats. Engine scoring, deck, and bots are otherwise untouched.
+
 ## Stack
 
 GitHub (public repo, one owner) + Vercel (production). No host switch on

@@ -33,14 +33,23 @@ vote splits, rings all-tie), and 3,000 simulated games across 2–5 players
 - `SPEC.md` — the wiki. The spec is the contract; deviations are flagged
   there, never silently reinterpreted.
 
+## v1.1 — spectate + viral polish
+
+Spectate bot-tournament mode is built: `stepTurn` drives the UI-free
+engine one turn at a time on a timer (Play/Pause, speed, Finish now),
+5 seeded games per tournament code, standings, event feed, and deep
+links (`?code=`, `?mode=spectate&tourney=`). MANDALA.md is the goal
+record (panel-reviewed, top-down); SPEC.md stays the wiki.
+
 ## Deploy
 
 Production is Vercel, connected to this repo (GitHub + Vercel, one owner).
 The live URL must return 200 and serve the new bytes before anything is
 called done.
 
-## v1.1 seams
+## v1.1 seams (shipped)
 
-Spectate bot-tournament mode needs no engine changes: drive `autoPlayGame`
-with all-bot seats and a step timer, and render the same UI. Tournament
-pairings are a round-robin over `pickBot` personalities.
+Spectate drives the engine with `stepTurn` (one full turn per call)
+on a timer — `autoPlayGame` runs to completion and cannot step, so
+the stepwise runner was the honest seam. Tournament pairings are
+seeded series over the `pickBot` personalities, not random draws.
