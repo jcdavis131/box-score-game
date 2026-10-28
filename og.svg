@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<rect width="1200" height="630" fill="#f6f1e7"/>
+<rect x="0" y="0" width="1200" height="14" fill="#c0392b"/>
+<g>
+<rect x="0" y="150" width="133" height="16" fill="#e67e22"/><rect x="133" y="150" width="133" height="16" fill="#1abc9c"/><rect x="266" y="150" width="133" height="16" fill="#c0392b"/><rect x="399" y="150" width="133" height="16" fill="#d4a017"/><rect x="532" y="150" width="134" height="16" fill="#8e44ad"/><rect x="666" y="150" width="133" height="16" fill="#e75480"/><rect x="799" y="150" width="133" height="16" fill="#2e86c1"/><rect x="932" y="150" width="134" height="16" fill="#27ae60"/><rect x="1066" y="150" width="134" height="16" fill="#7f8c8d"/>
+</g>
+<text x="600" y="290" font-family="Georgia, serif" font-size="110" font-weight="bold" text-anchor="middle" fill="#222222">The Box Score</text>
+<text x="600" y="360" font-family="Georgia, serif" font-size="34" font-style="italic" text-anchor="middle" fill="#555555">A card game of draft night — 4 rounds, one deck, take the night.</text>
+<g transform="translate(600,470)">
+<circle r="52" fill="none" stroke="#c0392b" stroke-width="6"/>
+<text y="18" font-family="Georgia, serif" font-size="40" font-weight="bold" text-anchor="middle" fill="#c0392b">BS</text>
+</g>
+</svg>

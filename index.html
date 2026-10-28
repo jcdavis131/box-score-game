@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Box Score — a card game of draft night</title>
+<meta name="description" content="The Box Score is a fast, standalone drafting card game. Draft 108 cards across 4 rounds against Marv, Dex, and Prudence — or a friend — and take the night. No login, instant play.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="The Box Score — a card game of draft night">
+<meta property="og:description" content="Draft 108 cards across 4 rounds. Pairs, triples, buckets, votes, rings. Take the night. No login — play now.">
+<meta property="og:image" content="og.svg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Box Score — a card game of draft night">
+<meta name="twitter:description" content="Draft 108 cards across 4 rounds. Pairs, triples, buckets, votes, rings. Take the night.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='14' fill='%23f6f1e7'/><circle cx='50' cy='50' r='30' fill='none' stroke='%23c0392b' stroke-width='6'/><text x='50' y='60' font-size='34' text-anchor='middle' font-family='Georgia' fill='%23222222'>BS</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-top">
+    <div>
+      <h1 id="gameTitle">The Box Score</h1>
+      <p class="tagline">A card game of draft night &middot; 4 rounds &middot; one deck &middot; take the night</p>
+    </div>
+    <nav class="topnav" aria-label="Game">
+      <button id="btnRules" type="button">How to play</button>
+      <button id="btnBinder" type="button">Binder</button>
+      <button id="btnNew" type="button" class="primary">New game</button>
+    </nav>
+  </div>
+  <div class="palette" aria-hidden="true">
+    <span style="--c:#e67e22" title="Alley-Oop"></span><span style="--c:#1abc9c" title="Triple-Double"></span><span style="--c:#c0392b" title="Buckets"></span><span style="--c:#d4a017" title="Rings"></span><span style="--c:#8e44ad" title="Deep Three"></span><span style="--c:#e75480" title="Hot Hand"></span><span style="--c:#2e86c1" title="All-Star Votes"></span><span style="--c:#27ae60" title="Free Throw / Layup"></span><span style="--c:#7f8c8d" title="Timeout"></span>
+  </div>
+</header>
+
+<main id="app">
+  <!-- SETUP -->
+  <section id="setup" class="panel">
+    <h2>Take your seat</h2>
+    <p class="lede">One shuffled deck of 108 cards, shared across all 4 rounds. Draft a card, pass the hand, score the round. Rings are the only thing that survives the night.</p>
+    <div class="field-row">
+      <label>Mode
+        <select id="modeSelect">
+          <option value="solo">Solo — you vs Marv, Dex &amp; Prudence</option>
+          <option value="duo">Pass &amp; play — 2 players + Marv</option>
+        </select>
+      </label>
+      <label>Deck code <span class="hint">(5 letters — same code, same deck)</span>
+        <input id="seedInput" maxlength="5" placeholder="Random" autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+    <div class="btn-row">
+      <button id="btnOpenPack" type="button" class="primary big">Tear open the wax pack</button>
+      <button id="btnRandomCode" type="button">Random deck</button>
+    </div>
+    <p class="small">Have a friend's code? Type it in and you'll play their exact deck.</p>
+  </section>
+
+  <!-- PACK RITUAL -->
+  <section id="packStage" class="panel hidden" aria-live="polite">
+    <div class="iso-wrap">
+      <div class="iso-table" aria-hidden="true"><span class="iso-line"></span><span class="iso-line"></span><span class="iso-line"></span></div>
+      <div id="pack" class="pack" role="button" tabindex="0" aria-label="Tear the pack">
+        <div class="pack-top">WAX PACK</div>
+        <div class="pack-mid">108 CARDS &middot; 4 ROUNDS</div>
+        <div class="pack-seal">BS</div>
+        <div class="pack-tear">Tap to tear</div>
+      </div>
+      <div id="packFan" class="pack-fan hidden"></div>
+    </div>
+    <p id="packMsg" class="center">One deck. Four rounds. No mercy.</p>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="hidden">
+    <div class="score-strip" aria-live="polite">
+      <div id="roundBadge" class="round-badge">ROUND 1 / 4</div>
+      <div id="scores" class="scores"></div>
+      <div class="deck-meta"><span id="deckLeft"></span> &middot; <span id="deckCode"></span></div>
+    </div>
+
+    <div class="iso-wrap">
+      <div class="iso-table" aria-hidden="true"><span class="iso-line"></span><span class="iso-line"></span><span class="iso-line"></span></div>
+      <div id="opponents" class="opponents"></div>
+      <div id="centerStage" class="center-stage">
+        <div id="deckPile" class="deck-pile" title="The deck"><span>108</span></div>
+        <div id="turnBanner" class="turn-banner">Your pick</div>
+      </div>
+    </div>
+
+    <div id="tableau" class="tableau">
+      <h3>Your books <span id="roundScoreNote" class="small"></span></h3>
+      <div id="tableauGroups" class="tableau-groups"></div>
+    </div>
+
+    <div class="hand-zone">
+      <div class="hand-head">
+        <h3 id="handTitle">Your hand</h3>
+        <span id="handHint" class="small">Tap a card to draft it. Timeout drafts a second card.</span>
+      </div>
+      <div id="hand" class="hand"></div>
+    </div>
+
+    <div class="btn-row wrap">
+      <button id="btnShare" type="button">Copy the challenge</button>
+      <button id="btnBinder2" type="button">Binder</button>
+      <button id="btnQuit" type="button" class="quiet">Quit to setup</button>
+    </div>
+    <p id="shareNote" class="small center hidden" aria-live="polite">Challenge copied — send it to a friend.</p>
+  </section>
+</main>
+
+<!-- PASS-AND-PLAY COVER -->
+<div id="cover" class="modal hidden" role="dialog" aria-modal="true" aria-label="Pass the device">
+  <div class="modal-card">
+    <h2 id="coverTitle">Pass the device</h2>
+    <p id="coverText">Hand it over — no peeking at the last hand.</p>
+    <button id="btnCoverReady" type="button" class="primary big">I'm ready</button>
+  </div>
+</div>
+
+<!-- ROUND SCORECARD -->
+<div id="roundModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Round scorecard">
+  <div class="modal-card scorecard">
+    <div id="stamp" class="stamp">IN THE BOOKS</div>
+    <h2 id="roundModalTitle">Round 1 — in the books</h2>
+    <div id="roundModalBody"></div>
+    <button id="btnNextRound" type="button" class="primary big">Next round</button>
+  </div>
+</div>
+
+<!-- FINAL -->
+<div id="finalModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Final box score">
+  <div class="modal-card scorecard wide">
+    <div id="finalStamp" class="stamp">FINAL</div>
+    <h2 id="finalTitle">Final box score</h2>
+    <div id="finalBody"></div>
+    <div id="reportCard"></div>
+    <canvas id="champCanvas" width="900" height="1200" class="hidden"></canvas>
+    <div class="btn-row wrap">
+      <button id="btnDownloadChamp" type="button" class="primary">Download champion card</button>
+      <button id="btnCopyFinal" type="button">Copy the challenge</button>
+      <button id="btnPlayAgain" type="button">Play again</button>
+    </div>
+  </div>
+</div>
+
+<!-- BINDER -->
+<div id="binderModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Session binder">
+  <div class="modal-card wide">
+    <h2>Session binder</h2>
+    <p class="small">Every card drafted this session, kept in the book. Variants are names and flavor only — no photos, no logos.</p>
+    <div id="binderBody"></div>
+    <button id="btnBinderClose" type="button" class="primary">Close binder</button>
+  </div>
+</div>
+
+<!-- RULES -->
+<div id="rulesModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="How to play">
+  <div class="modal-card wide">
+    <h2>How to play</h2>
+    <div class="rules">
+      <p><strong>Draft.</strong> Each round you're dealt a hand from one shared 108-card deck. Pick a card to keep, then pass the rest. Hands shrink until the round ends.</p>
+      <p><strong>Score the round.</strong> Alley-Oop pairs score 5 each. Triple-Double sets of 3 score 10 each. Buckets score 1 / 3 / 6 / 10 / 15 for 1 / 2 / 3 / 4 / 5+ of a kind. All-Star Votes rank by total stars: most 6, second 3, ties split. Free Throw 1, Layup 2, Deep Three 3.</p>
+      <p><strong>Hot Hand</strong> triples your next shot in the same round (3 / 6 / 9) and is worth 0 if no shot follows. <strong>Timeout</strong> lets you draft a second card that turn — chain them and keep drafting.</p>
+      <p><strong>Rings</strong> are the only cards kept all game. At the end: most rings +6, fewest −6, ties split; if everyone ties, no swing.</p>
+      <p><strong>Hands.</strong> 2 players get 10 cards, 3 get 9, 4 get 6, 5 get 5 — per round. Solo is you against Marv the Collector, Dex the Gunner, and Prudence the Ledger.</p>
+    </div>
+    <button id="btnRulesClose" type="button" class="primary">Got it</button>
+  </div>
+</div>
+
+<footer>
+  <p>Unofficial fan game. Player and coach names appear as text references only — no photos, no team logos, no league affiliation. Same deck code means the same shuffled deck.</p>
+  <p class="small">Built for the table. <span id="footTitle">The Box Score</span> &middot; <span id="footCode"></span></p>
+</footer>
+
+<script src="game.js"></script>
+</body>
+</html>
